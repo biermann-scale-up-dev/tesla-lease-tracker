@@ -1,0 +1,14 @@
+.git
+node_modules
+.env*
+data
+backups
+secrets
+certs
+.cache
+.npm-cache
+.tools
+test-results
+playwright-report
+dist
+dist-server

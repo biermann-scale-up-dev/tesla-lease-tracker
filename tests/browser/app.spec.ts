@@ -1,0 +1,55 @@
+import { test, expect } from '@playwright/test';
+import { testPassword } from '../fixtures.js';
+
+test('login, comparable forecasts, editing windows, trips and lease settings', async ({ page }, testInfo) => {
+  const failures: string[] = [];
+  page.on('pageerror', error => failures.push(error.message));
+  await page.goto('/');
+  await page.getByLabel('App-Passwort', { exact: true }).fill(testPassword);
+  await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Deine Kilometer im Blick.' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Seit Vertragsbeginn', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '30 Tage', exact: true })).toBeVisible();
+  await expect(page.getByRole('cell', { name: '90 Tage', exact: true })).toBeVisible();
+  await page.getByLabel('Prognosezeitraum 1').fill('14');
+  await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+  await expect(page.getByRole('cell', { name: '14 Tage', exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel('Prognosezeitraum 1')).toHaveValue('14');
+  await page.getByLabel('Zeitraum der Kilometer-Auswertung').selectOption('monthly');
+  await page.getByLabel('Zeitraum der Kilometer-Auswertung').selectOption('yearly');
+  await page.getByLabel('Zeitraum der Kilometer-Auswertung').selectOption('daily');
+  await page.getByLabel('Prognosezeitraum 1').fill('7');
+  await page.getByRole('button', { name: 'Übernehmen', exact: true }).click();
+  await expect(page.getByRole('cell', { name: '7 Tage', exact: true })).toBeVisible();
+  await page.screenshot({ path: `docs/images/dashboard-${testInfo.project.name}.png`, fullPage: true });
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+  expect(overflow).toBe(false);
+  await page.getByRole('navigation').getByRole('button', { name: 'Fahrten', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Fahrtenbuch' })).toBeVisible();
+  await expect(page.getByRole('cell', { name: 'Vollständig', exact: true }).first()).toBeVisible();
+  await page.getByRole('navigation').getByRole('button', { name: 'Vertrag & Verbindung' }).click();
+  await page.getByLabel('Verbindliche Vertragsgesamt-km').fill('61000');
+  await page.getByRole('button', { name: 'Vertrag speichern' }).click();
+  await expect(page.getByRole('status')).toHaveText('Dein Leasingvertrag wurde gespeichert.');
+  await page.reload();
+  await expect(page.getByLabel('Verbindliche Vertragsgesamt-km')).toHaveValue('61000');
+  await page.getByLabel('Verbindliche Vertragsgesamt-km').fill('60000');
+  await page.getByRole('button', { name: 'Vertrag speichern' }).click();
+  await expect(page.getByRole('status')).toHaveText('Dein Leasingvertrag wurde gespeichert.');
+  await page.getByRole('button', { name: 'Abmelden' }).click();
+  await expect(page.getByRole('button', { name: 'Anmelden', exact: true })).toBeVisible();
+  expect(failures).toEqual([]);
+});
+
+test('wrong password is actionable, private API is protected, PWA metadata is available', async ({ page, request }) => {
+  expect((await request.get('/api/dashboard')).status()).toBe(401);
+  await page.goto('/');
+  await page.getByLabel('App-Passwort', { exact: true }).fill('not-the-password');
+  await page.getByRole('button', { name: 'Anmelden', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Das Passwort stimmt nicht.');
+  const manifest = await request.get('/manifest.webmanifest');
+  expect(manifest.ok()).toBe(true);
+  expect(await manifest.json()).toMatchObject({ display: 'standalone', lang: 'de' });
+  expect((await request.get('/icon-192.png')).headers()['content-type']).toContain('image/png');
+});

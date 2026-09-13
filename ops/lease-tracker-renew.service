@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew Lease Tracker telemetry and command proxy certificates
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/tesla-lease-tracker
+ExecStart=/bin/sh /opt/tesla-lease-tracker/ops/renew-certificates.sh

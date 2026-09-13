@@ -1,0 +1,32 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: npm }
+      - run: npm ci
+      - run: npm run check
+      - run: npm run scan
+      - run: docker compose -f compose.test.yaml up -d --wait
+      - run: npm run test:broker
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Build application container
+        run: docker build -t tesla-lease-tracker:ci .
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failures
+          path: |
+            playwright-report
+            test-results
+      - name: Stop isolated test services
+        if: always()
+        run: docker compose -f compose.test.yaml down --volumes --rmi all

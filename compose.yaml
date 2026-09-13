@@ -1,0 +1,102 @@
+name: tesla-lease-tracker
+services:
+  app:
+    build: .
+    image: tesla-lease-tracker:0.1.0
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      DATABASE_PATH: /data/tracker.sqlite
+      KAFKA_BROKERS: redpanda:9092
+      TESLA_PUBLIC_KEY_PATH: /secrets/command-public.pem
+      TESLA_COMMAND_PROXY_URL: https://command-proxy:4443
+      TELEMETRY_CA_PATH: /certs/ca.pem
+      TELEMETRY_STATUS_URL: http://telemetry:8080/status
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+    volumes:
+      - app-data:/data
+      - ./secrets/command-public.pem:/secrets/command-public.pem:ro
+      - ./certs/ca.pem:/certs/ca.pem:ro
+    depends_on:
+      broker-init: { condition: service_completed_successfully }
+    security_opt: [no-new-privileges:true]
+  edge:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Set APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./ops/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [app]
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.2
+    restart: unless-stopped
+    command: [redpanda, start, --mode, dev-container, --smp, "1", --memory, 1G, --reserve-memory, 0M, --node-id, "0", --kafka-addr, PLAINTEXT://0.0.0.0:9092, --advertise-kafka-addr, PLAINTEXT://redpanda:9092]
+    volumes: [redpanda-data:/var/lib/redpanda/data]
+    healthcheck:
+      test: [CMD, rpk, cluster, health, --exit-when-healthy]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+  broker-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v26.2.2
+    entrypoint: /bin/sh
+    command: ["-ec", "for topic in tesla_V tesla_connectivity; do if ! rpk topic describe $$topic -X brokers=redpanda:9092 >/dev/null 2>&1; then rpk topic create $$topic -p 1 -r 1 -c retention.ms=2592000000 -X brokers=redpanda:9092; fi; done"]
+    depends_on:
+      redpanda: { condition: service_healthy }
+  telemetry:
+    build:
+      context: https://github.com/teslamotors/fleet-telemetry.git#8fbaa100bd365936dab6ecbf0e2d7070c4d765cb
+    image: lease-tracker-fleet-telemetry:8fbaa100
+    restart: unless-stopped
+    user: "1000:1000"
+    ports: ["${TELEMETRY_PORT:-8443}:8443"]
+    volumes:
+      - ./ops/telemetry.json:/etc/fleet-telemetry/config.json:ro
+      - ./certs:/certs:ro
+    depends_on:
+      broker-init: { condition: service_completed_successfully }
+  command-proxy:
+    image: tesla/vehicle-command:0.4.1
+    restart: unless-stopped
+    user: "1000:1000"
+    working_dir: /tmp
+    command: ["-tls-key", /certs/proxy-key.pem, "-cert", /certs/proxy.pem, "-key-file", /secrets/command-private.pem, "-host", 0.0.0.0, "-port", "4443"]
+    volumes:
+      - ./certs:/certs:ro
+      - ./secrets/command-private.pem:/secrets/command-private.pem:ro
+  backup:
+    image: tesla-lease-tracker:0.1.0
+    restart: unless-stopped
+    environment:
+      DATABASE_PATH: /data/tracker.sqlite
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?Set ENCRYPTION_KEY}
+      BACKUP_DIR: /backups
+    command: [node, dist-server/server/backup-job.js]
+    healthcheck:
+      test: [CMD, node, -e, "const fs=require('node:fs');const files=fs.readdirSync('/backups').filter(n=>/^tracker-.*\\.sqlite$/.test(n));if(!files.some(n=>Date.now()-fs.statSync('/backups/'+n).mtimeMs<26*3600000))process.exit(1)"]
+      interval: 1h
+      start_period: 30s
+      timeout: 5s
+      retries: 2
+    volumes: [app-data:/data, app-backups:/backups]
+    depends_on:
+      app: { condition: service_healthy }
+  certificates:
+    profiles: [tools]
+    build: { context: ./ops, dockerfile: certificates.Dockerfile }
+    environment:
+      TELEMETRY_HOST: ${TELEMETRY_HOST:?Set TELEMETRY_HOST}
+    volumes: [./certs:/certs, ./secrets:/secrets]
+volumes:
+  app-data:
+  app-backups:
+  redpanda-data:
+  caddy-data:
+  caddy-config:

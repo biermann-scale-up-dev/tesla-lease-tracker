@@ -1,0 +1,10 @@
+{
+  "host": "0.0.0.0", "port": 8443, "status_port": 8080,
+  "log_level": "info", "json_log_enable": true,
+  "namespace": "tesla", "transmit_decoded_records": true,
+  "reliable_ack_sources": { "V": "kafka" },
+  "records": { "V": ["kafka"], "connectivity": ["kafka"] },
+  "kafka": { "bootstrap.servers": "redpanda:9092", "acks": "all", "enable.idempotence": true },
+  "tls": { "server_cert": "/certs/telemetry.pem", "server_key": "/certs/telemetry-key.pem" },
+  "monitoring": { "prometheus_metrics_port": 9090 }
+}
