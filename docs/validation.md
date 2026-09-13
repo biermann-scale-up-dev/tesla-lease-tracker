@@ -7,7 +7,7 @@ Version: **0.1.0 prerelease**. All input records, screenshots, credentials and c
 | Check | Result |
 | --- | --- |
 | ESLint, strict TypeScript, Vite client and TypeScript server production builds | Passed |
-| SQLite/domain/API/receiver integration tests (`npm test`) | 15 passed |
+| SQLite/domain/API/receiver/process integration tests (`npm test`) | 17 passed |
 | Real Redpanda → Kafka consumer → SQLite, consumer restart and duplicate replay | 1 passed |
 | Browser journeys in desktop and mobile Chromium | 4 passed |
 | Desktop and mobile synthetic screenshots | Visually inspected; no document-level horizontal overflow |
@@ -24,6 +24,10 @@ Local JavaScript checks used Node 24.21.0 and the installed Google Chrome execut
 Test cases cover P/D/R/N manoeuvres, parking stops, duplicate and late packets, incomplete trip boundaries, invalid and decreasing odometers, recovery gaps, parked days, consumer/database restart, mid-contract onboarding, before/after-contract dates, negative remaining mileage, leap years, daylight-saving calendar boundaries, midnight arrivals and independent forecast windows. Authentication checks cover origin validation, session logout, private APIs, encryption and session-bound, single-use OAuth state.
 
 The real broker test does **not** emulate a Tesla client certificate or the vehicle's wire protocol. The container smoke checks validate service startup, certificate handling and rejection of unauthenticated clients; they do not prove delivery from a physical car. Public DNS, ACME issuance and systemd scheduling require validation on the deployment VPS.
+
+## Development restart regression
+
+The development-restart failure was observed as a running `tsx watch` parent with no remaining server child under unsupported Node 20.19.1. The replacement uses native Node 24 watch. Two process integration checks passed for file-change restart, recovery after a signalled child exit, Ctrl+C termination without listener warnings, and bounded shutdown during failed broker connection attempts. The unsupported-runtime guard was also checked using Node 20. No global runtime settings were changed.
 
 ## Real-vehicle acceptance — pending
 

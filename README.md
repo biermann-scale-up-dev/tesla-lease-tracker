@@ -63,6 +63,14 @@ docker compose -f compose.test.yaml down --volumes --rmi all
 
 `npm run check` runs lint, strict typing, SQLite/API/domain tests and production builds. The broker test uses real Redpanda and verifies consumer restart/replay. Browser tests run against a fresh SQLite database with synthetic records and test both desktop and mobile layouts. The dedicated test Compose project must not be pointed at production services.
 
+### Development runtime and restarting
+
+Use Node **24**, including in the terminal that starts development. With nvm, run `nvm install && nvm use` in this repository, then `npm ci`. Installation enforces the supported runtime and `npm run dev` checks it again with an actionable error.
+
+The backend uses Node's native `--watch` with the `tsx` TypeScript loader. It does not use `tsx watch`, whose handling of an already signalled child process can leave restarts waiting for another exit event and accumulate listeners. File changes, recovery after a signalled child exit, Ctrl+C, and shutdown while connecting to an unavailable broker are covered by process integration tests. Shutdown cancels provider requests and retries, closes HTTP/Kafka/SQLite resources, and enforces a four-second deadline with an explicit error if cleanup stalls. Uncommitted Kafka offsets are replayed on restart.
+
+If upgrading from an already stuck development watcher, stop that specific watcher once before restarting. Do not increase EventEmitter listener limits or kill unrelated Node processes.
+
 See [architecture, calculations and API](docs/architecture.md), [contributing](CONTRIBUTING.md), and the [changelog](changelog.md).
 
 ## License and independence

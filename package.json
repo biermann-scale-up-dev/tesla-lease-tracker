@@ -10,7 +10,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "dev": "tsx watch src/server/index.ts",
+    "predev": "node scripts/check-node.mjs",
+    "dev": "node --watch --watch-preserve-output --import tsx src/server/index.ts",
     "dev:web": "vite --host 127.0.0.1",
     "build": "vite build && tsc -p tsconfig.server.json",
     "start": "node dist-server/server/index.js",

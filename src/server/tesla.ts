@@ -26,7 +26,9 @@ function safeResponse(text: string): string {
 }
 export class TeslaClient {
   private refreshInFlight: Promise<string> | null = null;
+  private readonly shutdown = new AbortController();
   constructor(private readonly config: Config, private readonly store: Store, private readonly logger: FastifyBaseLogger) {}
+  close(): void { this.shutdown.abort(); }
   private assertCredentials(): void { if (!this.config.clientId || !this.config.clientSecret) throw new Error('TESLA_CLIENT_ID und TESLA_CLIENT_SECRET fehlen in der Serverkonfiguration.'); }
   authorizationUrl(now: number, sessionToken: string): string {
     this.assertCredentials();
@@ -39,7 +41,7 @@ export class TeslaClient {
   private async exchange(parameters: Record<string, string>): Promise<unknown> {
     this.assertCredentials();
     // Authorization codes and rotating refresh tokens must not be blindly replayed.
-    const response = await fetch('https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3/token', { method: 'POST', body: new URLSearchParams({ client_id: this.config.clientId, ...parameters }), signal: AbortSignal.timeout(20_000) });
+    const response = await fetch('https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3/token', { method: 'POST', body: new URLSearchParams({ client_id: this.config.clientId, ...parameters }), signal: AbortSignal.any([this.shutdown.signal, AbortSignal.timeout(20_000)]) });
     const text = await response.text();
     if (!response.ok) throw new Error(`Tesla Token-Austausch fehlgeschlagen (${response.status}): ${safeResponse(text)}. Bei widerrufenem Zugriff Tesla erneut verbinden.`);
     return JSON.parse(text) as unknown;
@@ -63,7 +65,7 @@ export class TeslaClient {
     if (tokens.expiresAt > Date.now() + 60_000) return tokens.accessToken;
     if (this.refreshInFlight) return this.refreshInFlight;
     this.refreshInFlight = this.exchange({ grant_type: 'refresh_token', refresh_token: tokens.refreshToken }).then(response => this.saveTokens(response, Date.now())).catch((error: unknown) => {
-      this.store.setSetting('tesla', { ...this.store.teslaStatus(), connected: false, problem: 'Autorisierung fehlgeschlagen. Tesla erneut verbinden.' });
+      if (!this.shutdown.signal.aborted) this.store.setSetting('tesla', { ...this.store.teslaStatus(), connected: false, problem: 'Autorisierung fehlgeschlagen. Tesla erneut verbinden.' });
       throw error;
     }).finally(() => { this.refreshInFlight = null; });
     return this.refreshInFlight;
@@ -71,22 +73,22 @@ export class TeslaClient {
   private async request(path: string, method: 'GET' | 'POST' | 'DELETE', body: unknown, origin: string, token: string): Promise<unknown> {
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const response = await fetch(`${origin}${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body === null ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(20_000) });
+        const response = await fetch(`${origin}${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body === null ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.any([this.shutdown.signal, AbortSignal.timeout(20_000)]) });
         const text = await response.text();
         if (response.ok) return JSON.parse(text) as unknown;
         if ((response.status === 429 || response.status >= 500) && attempt < 2) {
           const retryAfter = Number(response.headers.get('retry-after'));
           if (retryAfter > 30) throw new Error(`Tesla begrenzt ${path}; erneut versuchen in ${retryAfter} Sekunden.`);
           this.logger.warn({ path, status: response.status, attempt: attempt + 1 }, 'Tesla-Anfrage wird erneut versucht');
-          await delay(Math.max(500 * (attempt + 1), retryAfter * 1000));
+          await delay(Math.max(500 * (attempt + 1), retryAfter * 1000), undefined, { signal: this.shutdown.signal });
           continue;
         }
         if (response.status === 401 || response.status === 403) this.store.setSetting('tesla', { ...this.store.teslaStatus(), connected: false, problem: 'Tesla-Zugriff abgelehnt. Berechtigungen prüfen und erneut verbinden.' });
         throw new Error(`Tesla ${method} ${path} fehlgeschlagen (${response.status}): ${safeResponse(text)}`);
       } catch (error) {
-        if ((error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError')) && attempt < 2) {
+        if (!this.shutdown.signal.aborted && (error instanceof TypeError || (error instanceof DOMException && error.name === 'TimeoutError')) && attempt < 2) {
           this.logger.warn({ path, attempt: attempt + 1 }, 'Tesla-Netzwerkfehler; erneuter Versuch');
-          await delay(500 * (attempt + 1)); continue;
+          await delay(500 * (attempt + 1), undefined, { signal: this.shutdown.signal }); continue;
         }
         throw error;
       }

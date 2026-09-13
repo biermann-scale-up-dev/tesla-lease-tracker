@@ -24,8 +24,17 @@ let stopping = false;
 async function shutdown(code: number): Promise<void> {
   if (stopping) return;
   stopping = true; clearInterval(refresh); clearInterval(statusCheck);
-  try { await consumer?.stop(); await app.close(); store.close(); }
-  catch (error) { app.log.error({ err: error }, 'Shutdown fehlgeschlagen'); process.exitCode = 1; }
+  tesla.close();
+  // A stalled external connection must not leave development restarts or Docker stops hanging.
+  const deadline = setTimeout(() => {
+    app.log.fatal('Shutdown nach vier Sekunden abgebrochen. Nicht bestätigte Kafka-Nachrichten werden beim Neustart erneut verarbeitet.');
+    process.exit(1);
+  }, 4000);
+  deadline.unref();
+  const results = await Promise.allSettled([consumer?.stop(), app.close()]);
+  for (const result of results) if (result.status === 'rejected') { app.log.error({ err: result.reason }, 'Shutdown fehlgeschlagen'); process.exitCode = 1; }
+  try { store.close(); } catch (error) { app.log.error({ err: error }, 'Datenbank konnte nicht geschlossen werden'); process.exitCode = 1; }
+  clearTimeout(deadline);
   process.exitCode = process.exitCode ?? code;
 }
 process.on('SIGINT', () => { void shutdown(0); });

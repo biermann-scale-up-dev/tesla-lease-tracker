@@ -11,6 +11,7 @@
 
 ### Fixes
 
+- `package.json`, `.npmrc`, `scripts/check-node.mjs`, `src/server/{index,tesla}.ts`, `tests/lifecycle.test.ts`: replace the hanging `tsx watch` supervisor with native Node 24 watch, reject unsupported runtimes, cancel provider work during shutdown, enforce a cleanup deadline, and cover restart/signalled-child/Ctrl+C/broker-startup termination with process tests.
 - `src/shared/analytics.ts`, `src/server/telemetry.ts`: preserve the last valid odometer, leave entire invalid-reading recovery intervals incomplete, keep unassigned distance visible, and prevent late connectivity events from overriding newer status.
 - `ops/telemetry.json`, `compose.yaml`: use reliable acknowledgments only for vehicle records, configure a dedicated receiver status endpoint and a backup-specific health check.
 
@@ -21,6 +22,6 @@
 
 ### Chores
 
-- `tests/`, `playwright.config.ts`, `compose.test.yaml`, `.github/workflows/ci.yml`: 15 passing local domain/API/SQLite/receiver checks, one real-broker restart/replay check, four desktop/mobile browser journeys and automated lint/type/build validation.
+- `tests/`, `playwright.config.ts`, `compose.test.yaml`, `.github/workflows/ci.yml`: 17 passing local domain/API/SQLite/receiver/process checks, one real-broker restart/replay check, four desktop/mobile browser journeys and automated lint/type/build validation.
 - `scripts/`, `.env.example`, `.gitignore`, `.dockerignore`, project tool configuration: safe installation/demo/backup helpers, placeholder-only configuration and source/history secret scanning.
 - Docker smoke validation passed for app/receiver/proxy/broker/backup startup, secure session boundaries, mTLS rejection, backup integrity and certificate renewal. Physical Tesla and public VPS acceptance remain pending for this prerelease.
