@@ -16,7 +16,7 @@ jobs:
       - run: npm run scan
       - run: docker compose -f compose.test.yaml up -d --wait
       - run: npm run test:broker
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
       - name: Build application container
         run: docker build -t tesla-lease-tracker:ci .

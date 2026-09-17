@@ -1,29 +1,30 @@
 # Validation and release acceptance
 
-## Local evidence — 2026-09-13
+## Local evidence — 2026-09-17
 
-Version: **0.1.0 prerelease**. All input records, screenshots, credentials and certificates used for these checks were synthetic. No Tesla account or physical vehicle was accessed.
+Version: **0.3.0 prerelease**. All input records, screenshots and credentials used for these checks were synthetic. No Tesla account, physical vehicle or iPhone was accessed.
 
 | Check | Result |
 | --- | --- |
 | ESLint, strict TypeScript, Vite client and TypeScript server production builds | Passed |
-| SQLite/domain/API/receiver/process integration tests (`npm test`) | 17 passed |
+| SQLite/domain/API/receiver/process/Scriptable integration tests (`npm test`) | 20 passed |
 | Real Redpanda → Kafka consumer → SQLite, consumer restart and duplicate replay | 1 passed |
-| Browser journeys in desktop and mobile Chromium | 4 passed |
-| Desktop and mobile synthetic screenshots | Visually inspected; no document-level horizontal overflow |
-| App container build, Node 24.19.0 | Passed |
-| Official Fleet Telemetry receiver build at `8fbaa100bd365936dab6ecbf0e2d7070c4d765cb` | Passed |
-| Compose app, receiver, Redpanda, command proxy and backup startup | Passed with temporary configuration |
-| Production session cookie, unauthenticated API rejection, public command key, receiver and broker status | Passed inside the app container |
-| Receiver mTLS rejects a client without a client certificate | Passed |
-| SQLite backup service and backup `PRAGMA integrity_check` | Passed |
-| Leaf certificate renewal preserves CA and command public key; receiver/proxy restart | Passed |
+| Browser journeys: desktop Chromium, mobile Chromium, mobile WebKit | 21 passed (7 per project) |
+| Light/dark UI, all four sections at 320/390/430/1440 CSS pixels | Passed; no document-level horizontal overflow |
+| Synthetic dashboard, mobile forecast cards and Tesla quick-view screenshots | Visually inspected |
+| App container build (Node 24.19.0), migrations, production owner/reader cookies, device isolation and built assets | Passed |
 
-Local JavaScript checks used Node 24.21.0 and the installed Google Chrome executable on macOS. CI installs Node 24 and Playwright Chromium on Linux and independently builds the application container. The source was also validated from an isolated temporary directory because the host workspace intermittently stalled filesystem operations. Build inputs were copied from this repository.
+Local JavaScript checks used Node 24.21.0 on macOS with Playwright-managed Chromium and WebKit. The source was validated from an isolated temporary directory because the host workspace intermittently stalled filesystem operations; build inputs were copied from this repository. CI repeats the checks on Linux and builds the application container.
 
-Test cases cover P/D/R/N manoeuvres, parking stops, duplicate and late packets, incomplete trip boundaries, invalid and decreasing odometers, recovery gaps, parked days, consumer/database restart, mid-contract onboarding, before/after-contract dates, negative remaining mileage, leap years, daylight-saving calendar boundaries, midnight arrivals and independent forecast windows. Authentication checks cover origin validation, session logout, private APIs, encryption and session-bound, single-use OAuth state.
+Browser journeys cover direct links/back navigation, editable settings, all forecast bases, offline reload, the last-20-trips snapshot, session expiry, offline logout/reconnect, missing readings, full offline storage, Tesla QR approval, persisted reader cookies, per-device forecast changes, revocation and explicit service-worker updates with dirty-form protection. Chromium uses browser offline emulation. WebKit uses dropped test-server connections because emulated offline reload failed in the automation layer; its real service worker, Cache API and IndexedDB remain active. The isolated missing-data/storage-error scenario blocks service workers to reliably intercept its synthetic API response. These checks do not establish iPhone installation or actual vehicle-browser compatibility.
 
-The real broker test does **not** emulate a Tesla client certificate or the vehicle's wire protocol. The container smoke checks validate service startup, certificate handling and rejection of unauthenticated clients; they do not prove delivery from a physical car. Public DNS, ACME issuance and systemd scheduling require validation on the deployment VPS.
+SQLite/API checks cover pairing expiry, single use, hashed credentials, restart persistence, owner/device access boundaries, CSRF, retry limits, device selection and revocation. The distributed Scriptable JavaScript runs in thin host adapters against the real Fastify/SQLite API, covering all three widget families, a cached outage and confirmed revocation. Native Scriptable rendering and iOS scheduling require the physical checks below.
+
+Existing domain tests retain P/D/R/N manoeuvres, parking stops, duplicates and late packets, incomplete trip boundaries, invalid/decreasing odometers, recovery gaps, parked days, consumer/database restart, mid-contract onboarding, contract dates, overspend, leap years, daylight-saving boundaries, midnight arrivals and independent forecast windows. The broker test does **not** emulate a Tesla client certificate or the vehicle wire protocol.
+
+### Earlier infrastructure evidence — 2026-09-13
+
+The v0.1.0 baseline passed the official receiver build at `8fbaa100bd365936dab6ecbf0e2d7070c4d765cb`, temporary Compose app/receiver/Redpanda/command-proxy/backup startup, production session boundaries, receiver mTLS rejection, backup integrity and certificate renewal with stable CA/command keys. These infrastructure checks are historical evidence, not a new physical-car or public-VPS acceptance. Public DNS, ACME issuance and systemd scheduling remain deployment checks.
 
 ## Development restart regression
 
@@ -43,6 +44,15 @@ The prerelease is available for evaluation. Do not interpret local or CI results
 
 Record dates, firmware, odometer differences and outcomes in a private acceptance log. Publish only redacted results. Any missing boundary, unexplained distance or delivery loss must remain visible as a data-quality issue.
 
+## Physical mobile/device acceptance — pending
+
+1. On an iPhone, install from Safari, log in, close/reopen offline, inspect both appearances and safe areas, verify the saved timestamps, then perform offline logout and reconnect.
+2. Import the distributed script into Scriptable. Pair and inspect small/medium Home Screen and rectangular Lock Screen widgets with populated, missing and incomplete data. Check system appearance, tap destination, cached outage and revocation. Observe iOS refresh scheduling; a requested 30-minute refresh is not a timing guarantee.
+3. In a parked Tesla, open `/tesla`, scan and approve the matching code from an authenticated phone, and inspect all metrics. Close/restart the vehicle browser and verify reader persistence, visible-page refresh, per-device forecast selection and revocation.
+4. Exercise an app update on the installed iPhone with an unsaved form; confirm explicit consent and preserved access after activation.
+
+Record device/OS/vehicle firmware, date and outcome without publishing credentials or real mileage. Automated Chromium/WebKit checks do not replace this acceptance.
+
 ## Release verification
 
-The public [CI workflow](https://github.com/biermann-scale-up-dev/tesla-lease-tracker/actions/workflows/ci.yml) is the current remote verification record. The [v0.1.0 prerelease](https://github.com/biermann-scale-up-dev/tesla-lease-tracker/releases/tag/v0.1.0) explicitly retains the pending physical-vehicle acceptance. Source and commit history are checked with `npm run scan` before publication; runtime directories are excluded by `.gitignore` and `.dockerignore`.
+The public [CI workflow](https://github.com/biermann-scale-up-dev/tesla-lease-tracker/actions/workflows/ci.yml) is the remote verification record, including the application container build. The [v0.3.0 prerelease](https://github.com/biermann-scale-up-dev/tesla-lease-tracker/releases/tag/v0.3.0) explicitly retains pending physical iPhone, Scriptable, Tesla-browser and real-vehicle acceptance. Source and commit history are checked with `npm run scan` before publication; runtime directories are excluded by `.gitignore` and `.dockerignore`.

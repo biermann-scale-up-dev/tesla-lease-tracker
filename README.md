@@ -5,7 +5,7 @@
 
 A self-hosted leasing mileage dashboard for one Tesla Model 3 or Model Y. Automatically capture trips, see your remaining allowance, and compare where different driving patterns would leave you at the end of your lease.
 
-**v0.1.0 is a prerelease. Real-vehicle pairing, boundary accuracy and recovery have not yet been accepted on a physical Tesla.** See [validation](docs/validation.md) for the exact evidence and outstanding acceptance steps.
+**v0.3.0 is a prerelease. Physical iPhone/Scriptable and Tesla-browser acceptance, real-vehicle pairing, boundary accuracy and recovery remain pending.** See [validation](docs/validation.md) for the exact evidence and outstanding acceptance steps.
 
 ![Desktop dashboard using synthetic vehicle and trip data](docs/images/dashboard-desktop.png)
 
@@ -16,10 +16,13 @@ A self-hosted leasing mileage dashboard for one Tesla Model 3 or Model Y. Automa
 - Trips and daily, seven-day, monthly and contract-year mileage views.
 - Side-by-side forecasts based on three configurable windows (default 7/30/90 days) and the full contract average.
 - Explicit incomplete trips and unassigned mileage. Missing observations never count as proven zero-distance days.
-- German, responsive, installable web app; English operator documentation.
+- German mobile app with four navigation sections, light/dark/system appearance, expandable trip cards and installable PWA.
+- Offline budgets, forecasts, aggregate history and the latest 20 trips, bounded by the owner session.
+- Scriptable iPhone Home/Lock Screen widgets and a parked Tesla-browser quick view, with individually revocable reader access.
+- English setup and operator documentation.
 - One private owner account per installation, encrypted Tesla tokens, SQLite persistence and daily backups.
 
-Cost per kilometre, notifications, multiple users and older telemetry firmware are outside v0.
+Cost per kilometre, notifications, multiple users and older telemetry firmware are outside this milestone.
 
 ## Try locally with synthetic data
 
@@ -39,6 +42,14 @@ Open **http://127.0.0.1:3000** and use the app password printed by setup. `.env`
 
 The demo flag is visible in the UI, Tesla configuration actions are disabled, and the seeded database must not be reused for a real vehicle. Use a fresh database/volume for deployment.
 
+## PWA and widgets
+
+See [mobile installation, offline behavior and widget setup](docs/mobile-and-widgets.md). The iPhone widget needs Scriptable; the Tesla view runs at `/tesla`. Both read your existing server data without additional vehicle polling.
+
+![Mobile dashboard using synthetic data](docs/images/dashboard-mobile.png)
+
+![Parked Tesla-browser view using synthetic data](docs/images/tesla-desktop.png)
+
 ## Connect a real car
 
 You need a public VPS, Docker Compose, two DNS names, an approved personal Tesla Developer application, and Model 3/Y firmware with Fleet Telemetry **1.3.0 or later** (introduced in **2026.26.6**). Each installation uses its own Tesla application credentials and billing account.
@@ -56,12 +67,12 @@ Tesla currently provides a **$10 monthly discount**, not an unlimited free tier.
 npm run check
 docker compose -f compose.test.yaml up -d --wait
 npm run test:broker
-npx playwright install chromium
+npx playwright install chromium webkit
 npm run test:e2e
 docker compose -f compose.test.yaml down --volumes --rmi all
 ```
 
-`npm run check` runs lint, strict typing, SQLite/API/domain tests and production builds. The broker test uses real Redpanda and verifies consumer restart/replay. Browser tests run against a fresh SQLite database with synthetic records and test both desktop and mobile layouts. The dedicated test Compose project must not be pointed at production services.
+`npm run check` runs lint, strict typing, SQLite/API/domain tests and production builds. The broker test uses real Redpanda and verifies consumer restart/replay. Browser tests run against a fresh SQLite database with synthetic records and test desktop/mobile Chromium and WebKit, including offline data, logout, pairing, revocation and controlled app updates. The dedicated test Compose project must not be pointed at production services.
 
 ### Development runtime and restarting
 

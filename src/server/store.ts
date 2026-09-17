@@ -38,6 +38,13 @@ export class Store {
         this.db.exec("ALTER TABLE oauth_states ADD COLUMN session_hash TEXT NOT NULL DEFAULT ''; INSERT INTO migrations VALUES (2, strftime('%Y-%m-%dT%H:%M:%fZ','now'));");
       });
     }
+    if (!this.db.prepare('SELECT version FROM migrations WHERE version=3').get()) {
+      this.transaction(() => this.db.exec(`
+        CREATE TABLE devices (id TEXT PRIMARY KEY, hash TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, name TEXT NOT NULL, forecast_basis TEXT NOT NULL, created_at TEXT NOT NULL, last_used_at TEXT);
+        CREATE TABLE pairings (code_hash TEXT PRIMARY KEY, secret_hash TEXT, kind TEXT NOT NULL, name TEXT NOT NULL, forecast_basis TEXT NOT NULL, approved INTEGER NOT NULL, expires_at INTEGER NOT NULL);
+        INSERT INTO migrations VALUES (3, strftime('%Y-%m-%dT%H:%M:%fZ','now'));
+      `));
+    }
   }
   transaction<T>(fn: () => T): T {
     this.db.exec('BEGIN IMMEDIATE');
@@ -61,6 +68,10 @@ export class Store {
     this.db.prepare('INSERT INTO sessions VALUES (?,?)').run(digest(token), now + 7 * 86_400_000);
   }
   hasSession(token: string, now: number): boolean { return Boolean(this.db.prepare('SELECT hash FROM sessions WHERE hash=? AND expires_at>?').get(digest(token), now)); }
+  sessionExpiresAt(token: string, now: number): number | null {
+    const row = this.db.prepare('SELECT expires_at FROM sessions WHERE hash=? AND expires_at>?').get(digest(token), now);
+    return row ? z.object({ expires_at: z.number() }).parse(row).expires_at : null;
+  }
   deleteSession(token: string): void { this.db.prepare('DELETE FROM sessions WHERE hash=?').run(digest(token)); }
   addOAuthState(state: string, now: number, sessionToken: string): void { this.db.prepare('DELETE FROM oauth_states WHERE expires_at<=?').run(now); this.db.prepare('INSERT INTO oauth_states VALUES (?,?,?)').run(digest(state), now + 600_000, digest(sessionToken)); }
   consumeOAuthState(state: string, now: number, sessionToken: string): boolean {

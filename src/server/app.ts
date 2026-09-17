@@ -14,6 +14,7 @@ import type { Store } from './store.js';
 import { randomToken, verifyPassword } from './security.js';
 import { TeslaClient } from './tesla.js';
 import { receiverStatus } from './receiver-status.js';
+import { registerDevices } from './devices.js';
 
 function httpError(statusCode: number, message: string): Error & { statusCode: number } { return Object.assign(new Error(message), { statusCode }); }
 
@@ -26,9 +27,10 @@ export async function buildApp(config: Config, store: Store, service: () => Serv
   app.addHook('onRequest', async (request, reply) => {
     if (!request.url.startsWith('/api/')) return;
     reply.header('Cache-Control', 'no-store');
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.origin !== config.origin) throw httpError(403, 'Ungültiger Anfrage-Ursprung. App über APP_ORIGIN öffnen.');
     const path = request.url.split('?')[0];
-    if (path === '/api/login' || path === '/api/session') return;
+    const nativeClaim = path === '/api/pairing/claim' && request.headers.origin === undefined && request.headers.cookie === undefined;
+    if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && request.headers.origin !== config.origin && !nativeClaim) throw httpError(403, 'Ungültiger Anfrage-Ursprung. App über APP_ORIGIN öffnen.');
+    if (['/api/login', '/api/session', '/api/logout', '/api/pairing/tesla', '/api/pairing/claim', '/api/widget-summary'].includes(path!)) return;
     const token = request.cookies.session;
     if (!token || !store.hasSession(token, Date.now())) throw httpError(401, 'Bitte anmelden.');
   });
@@ -39,7 +41,10 @@ export async function buildApp(config: Config, store: Store, service: () => Serv
     reply.code(status).send({ error: message });
   });
   app.get('/healthz', async () => ({ status: 'ok' }));
-  app.get('/api/session', async request => ({ authenticated: Boolean(request.cookies.session && store.hasSession(request.cookies.session, Date.now())) }));
+  app.get('/api/session', async request => {
+    const expiresAt = request.cookies.session ? store.sessionExpiresAt(request.cookies.session, Date.now()) : null;
+    return { authenticated: expiresAt !== null, expiresAt };
+  });
   app.post('/api/login', { config: { rateLimit: { max: 5, timeWindow: '15 minutes' } } }, async (request, reply) => {
     const { password } = z.object({ password: z.string().min(1).max(256) }).strict().parse(request.body);
     if (!verifyPassword(password, config.passwordHash)) throw httpError(401, 'Das Passwort stimmt nicht.');
@@ -48,6 +53,7 @@ export async function buildApp(config: Config, store: Store, service: () => Serv
     return { ok: true };
   });
   app.post('/api/logout', async (request, reply) => { if (request.cookies.session) store.deleteSession(request.cookies.session); reply.clearCookie('session', { path: '/' }); return { ok: true }; });
+  registerDevices(app, store, config);
   app.get('/api/dashboard', async (): Promise<Dashboard> => {
     const contract = store.contract();
     const preferences = store.preferences();
